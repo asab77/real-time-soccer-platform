@@ -25,5 +25,21 @@ export DB_PASSWORD=your_password
 ./mvnw spring-boot:run
 ```
 
-There are no HTTP endpoints yet. A successful application start confirms that
-Spring can connect to PostgreSQL and initialize the current entity schema.
+## API-Football configuration
+
+Set the API key through an environment variable before manually synchronizing
+fixtures:
+
+```bash
+export API_FOOTBALL_KEY=<your-api-key>
+```
+
+Never commit the API key or a local secrets file. Files named `.env`, `.env.*`,
+and `application-local.properties` are ignored by Git.
+
+One manual synchronization fetches fixtures for one configured league on one
+date and consumes one API-Football request:
+
+```bash
+curl -X POST "http://localhost:8080/internal/sync/fixtures?externalLeagueId=39&season=2026&date=2026-09-06"
+```

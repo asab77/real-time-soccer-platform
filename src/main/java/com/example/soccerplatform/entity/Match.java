@@ -26,6 +26,9 @@ public class Match {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "external_id", unique = true)
+    private Long externalId;
+
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "league_id", nullable = false)
     private League league;
@@ -75,6 +78,14 @@ public class Match {
         return league;
     }
 
+    public Long getExternalId() {
+        return externalId;
+    }
+
+    public void setExternalId(Long externalId) {
+        this.externalId = externalId;
+    }
+
     public Team getHomeTeam() {
         return homeTeam;
     }
@@ -97,6 +108,10 @@ public class Match {
 
     public MatchStatus getStatus() {
         return status;
+    }
+
+    public void setStartTime(OffsetDateTime startTime) {
+        this.startTime = startTime;
     }
 
     public void setScore(Integer homeScore, Integer awayScore) {

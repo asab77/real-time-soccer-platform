@@ -16,6 +16,9 @@ public class League {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    @Column(name = "external_id", unique = true)
+    private Long externalId;
+
     @NotBlank
     @Column(nullable = false)
     private String name;
@@ -33,6 +36,14 @@ public class League {
 
     public String getName() {
         return name;
+    }
+
+    public Long getExternalId() {
+        return externalId;
+    }
+
+    public void setExternalId(Long externalId) {
+        this.externalId = externalId;
     }
 
     public void setName(String name) {
