@@ -1,24 +1,138 @@
-# Soccer Platform
+# Real-Time Soccer Platform
 
-A beginner-readable full-stack MVP for following soccer leagues and viewing
-their matches. Spring Boot serves REST and STOMP WebSocket APIs, PostgreSQL is
-the source of truth, Redis provides disposable response caching, and React
-renders the browser interface.
+[![CI](https://github.com/asab77/real-time-soccer-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/asab77/real-time-soccer-platform/actions/workflows/ci.yml)
+
+A full-stack soccer match platform that combines scheduled provider synchronization, personalized match feeds, Redis caching, and live browser updates. The project uses a conventional Spring Boot service architecture with PostgreSQL as its source of truth and a React client for league preferences and match tracking.
+
+## Demo / Screenshots
+
+The application runs locally at `http://localhost:3000` after following the Docker Compose quick start below.
+
+> Screenshot placeholder — dashboard and league-preference view.
 
 ## Architecture
 
-```text
-Browser (React)
-  |-- REST + STOMP WebSocket --> Spring Boot
-                                   |-- JPA --> PostgreSQL
-                                   |-- cache --> Redis
-                                   `-- optional sync --> API-Football
+```mermaid
+flowchart LR
+    Provider[API-Football] --> Scheduler[Scheduled synchronization]
+    Scheduler --> Backend[Spring Boot]
+    Backend -->|JPA writes and reads| Database[(PostgreSQL)]
+    Backend <-->|Cache-aside match feeds| Cache[(Redis)]
+    Browser[React frontend] -->|REST: initial and current state| Backend
+    Backend -->|STOMP / WebSocket: change notifications| Browser
+    Flyway[Flyway migrations] --> Database
 ```
 
-Flyway owns the PostgreSQL schema. Hibernate validates entity mappings but does
-not create or alter production tables.
+PostgreSQL remains authoritative. REST returns the current application state; WebSocket messages notify connected clients that match state changed.
 
-## Docker Compose quick start
+## Tech Stack
+
+- **Frontend:** React, TypeScript, Vite
+- **Backend:** Java 21, Spring Boot, Spring Data JPA, Spring Cache, Spring WebSocket/STOMP
+- **Data:** PostgreSQL, Redis, Flyway
+- **Infrastructure:** Docker, Docker Compose, nginx
+- **External data:** API-Football
+- **Testing:** Spring Boot test suite, Vitest and Testing Library
+
+## Engineering Highlights
+
+- REST APIs load initial state and provide authoritative league, preference, and match data.
+- STOMP/WebSocket topics push score and status change notifications to interested clients.
+- Match feeds use Redis with a cache-aside pattern while PostgreSQL remains the source of truth.
+- Flyway owns versioned database migrations; Hibernate validates rather than mutates the schema.
+- Provider fixture IDs make synchronization idempotent, updating existing fixtures instead of duplicating them.
+- Cache invalidation and WebSocket publication occur after a successful transaction commit, so clients never observe rolled-back changes.
+- Provider synchronization is centralized by league and date instead of making external calls per user.
+- Redis failures degrade gracefully to PostgreSQL-backed reads.
+- Docker Compose supplies a repeatable four-service local environment with health checks and persistent PostgreSQL storage.
+- API credentials are supplied only through environment variables.
+
+## Real-Time Data Flow
+
+```text
+API-Football
+→ ScheduledFixtureSync
+→ FixtureSyncService
+→ PostgreSQL transaction
+→ commit
+→ Redis cache invalidation
+→ WebSocket MatchUpdateMessage
+→ React client
+→ REST refetch of the active match filter
+```
+
+The WebSocket message is deliberately a change notification. After receiving it, the frontend refetches REST data so filtering and response construction stay centralized in the backend.
+
+## Database Model
+
+```mermaid
+erDiagram
+    USER ||--o{ LEAGUE_PREFERENCE : follows
+    LEAGUE ||--o{ LEAGUE_PREFERENCE : selected_in
+    LEAGUE ||--o{ MATCH : contains
+    TEAM ||--o{ MATCH : home_team
+    TEAM ||--o{ MATCH : away_team
+
+    USER {
+        bigint id PK
+        varchar name
+    }
+    LEAGUE {
+        bigint id PK
+        bigint external_id UK
+        varchar name
+    }
+    LEAGUE_PREFERENCE {
+        bigint id PK
+        bigint user_id FK
+        bigint league_id FK
+    }
+    TEAM {
+        bigint id PK
+        bigint external_id UK
+        varchar name
+    }
+    MATCH {
+        bigint id PK
+        bigint external_id UK
+        bigint league_id FK
+        bigint home_team_id FK
+        bigint away_team_id FK
+        timestamptz start_time
+        integer home_score
+        integer away_score
+        varchar status
+    }
+```
+
+`LeaguePreference` enforces one preference per user/league pair. A match must reference different home and away teams.
+
+## API Examples
+
+| Method | Endpoint | Purpose |
+| --- | --- | --- |
+| `GET` | `/demo/user` | Retrieve the local demo user |
+| `GET` | `/leagues` | List available leagues |
+| `GET` | `/users/{userId}/preferences` | List a user's followed leagues |
+| `POST` | `/users/{userId}/preferences` | Follow a league using `{"leagueId": 1}` |
+| `DELETE` | `/users/{userId}/preferences/{leagueId}` | Unfollow a league |
+| `GET` | `/users/{userId}/matches` | Retrieve a personalized match feed |
+| `GET` | `/leagues/{leagueId}/matches` | Retrieve matches for one league |
+| `POST` | `/internal/sync/fixtures` | Manually synchronize one provider league/date |
+
+Match endpoints accept status filtering, for example:
+
+```bash
+curl "http://localhost:8080/users/1/matches?status=LIVE"
+```
+
+A manual synchronization consumes one provider request:
+
+```bash
+curl -X POST "http://localhost:8080/internal/sync/fixtures?externalLeagueId=39&season=2026&date=2026-09-06"
+```
+
+## Quick Start
 
 Prerequisite: Docker Desktop or another Docker installation with Compose.
 
@@ -26,41 +140,23 @@ Prerequisite: Docker Desktop or another Docker installation with Compose.
 docker compose up --build
 ```
 
-Then open the frontend at `http://localhost:3000`. The backend is available at
-`http://localhost:8080`.
+- Frontend: `http://localhost:3000`
+- Backend: `http://localhost:8080`
 
-Compose waits for PostgreSQL and Redis health checks before starting the
-backend. Flyway runs automatically against a fresh database. The idempotent demo
-initializer creates the Demo User and configured leagues only when missing.
-
-Stop while preserving PostgreSQL data:
+Stop the stack while preserving PostgreSQL data:
 
 ```bash
 docker compose down
 ```
 
-### Environment variables
+Intentionally delete the local database volume and rebuild from Flyway:
 
-The defaults are local-development values. Override them in your shell or an
-ignored `.env.compose` file:
+```bash
+docker compose down --volumes
+docker compose up --build
+```
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `DB_NAME` | `soccer_platform` | PostgreSQL database |
-| `DB_USER` | `soccer` | PostgreSQL user |
-| `DB_PASSWORD` | `soccer_dev` | Local-only PostgreSQL password |
-| `POSTGRES_PORT` | `5432` | Host PostgreSQL port |
-| `REDIS_PORT` | `6379` | Host Redis port |
-| `BACKEND_PORT` | `8080` | Host backend port |
-| `FRONTEND_PORT` | `3000` | Host frontend port |
-| `DEMO_DATA_ENABLED` | `true` | Create local demo data |
-| `SOCCER_SYNC_ENABLED` | `false` | Enable scheduled provider sync |
-| `API_FOOTBALL_KEY` | empty | Optional provider credential |
-
-Never commit real credentials. `.env`, `.env.*`, `.env.compose`, and
-`application-local.properties` are ignored.
-
-Enable scheduled synchronization only after supplying the key outside Git:
+The first command permanently removes the Compose-managed local database. Scheduled provider synchronization is disabled by default. To enable it, supply the provider key outside Git:
 
 ```bash
 export API_FOOTBALL_KEY=<your-key>
@@ -68,81 +164,51 @@ export SOCCER_SYNC_ENABLED=true
 docker compose up --build
 ```
 
-The backend starts without the key while scheduling is disabled.
+Never place the real key in source files, Compose files, frontend configuration, or Git history.
 
-### Manual fixture synchronization
+## Environment Variables
 
-One manual call consumes one provider request:
+| Variable | Default | Usage |
+| --- | --- | --- |
+| `API_FOOTBALL_KEY` | empty | Backend provider credential; required only for real synchronization |
+| `SOCCER_SYNC_ENABLED` | `false` | Enables scheduled synchronization |
+| `SOCCER_SYNC_INTERVAL` | `PT1H` | Delay between scheduled synchronization runs |
+| `DB_HOST` | `localhost` | PostgreSQL host; Compose supplies `postgres` |
+| `DB_PORT` | `5432` | PostgreSQL port |
+| `DB_NAME` | `soccer_platform` | PostgreSQL database name |
+| `DB_USER` | `postgres` | PostgreSQL username; Compose defaults to local user `soccer` |
+| `DB_PASSWORD` | `postgres` | PostgreSQL password; override outside source control |
+| `REDIS_HOST` | `localhost` | Redis host; Compose supplies `redis` |
+| `REDIS_PORT` | `6379` | Redis port |
+| `MATCH_CACHE_TTL` | `45s` | Match-feed cache lifetime |
+| `FRONTEND_ORIGIN` | `http://localhost:5173` | Backend REST and WebSocket CORS origin; Compose uses port 3000 |
+| `VITE_API_BASE_URL` | `http://localhost:8080` | Backend URL embedded in the frontend build |
 
-```bash
-curl -X POST "http://localhost:8080/internal/sync/fixtures?externalLeagueId=39&season=2026&date=2026-09-06"
-```
+Docker Compose also supports host-port overrides such as `FRONTEND_PORT`, `BACKEND_PORT`, and `POSTGRES_PORT`. Local-only environment files matching `.env*` are ignored by Git.
 
-Only run it when a key is configured and you intend to spend a request.
+## Testing
 
-### Persistence and intentional reset
-
-PostgreSQL uses the named volume `soccer_postgres_data`; normal restarts and
-`docker compose down` preserve its data. To intentionally erase the local
-Compose database and rebuild it from Flyway:
-
-```bash
-docker compose down --volumes
-docker compose up --build
-```
-
-The first command permanently removes the local Compose database volume.
-
-## Running without Docker
-
-Requirements: Java 21, PostgreSQL, Redis, and Node.js 20 or newer.
-
-```bash
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_NAME=soccer_platform
-export DB_USER=postgres
-export DB_PASSWORD=your_local_password
-export REDIS_HOST=localhost
-export REDIS_PORT=6379
-./mvnw spring-boot:run
-```
-
-In a second terminal:
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-Vite runs at `http://localhost:5173` and defaults to the backend at
-`http://localhost:8080`. Override these with `VITE_API_BASE_URL` and
-`FRONTEND_ORIGIN` when needed.
-
-## Tests and builds
-
-Backend tests use H2 and need no PostgreSQL, Redis, or provider key:
+Backend tests use H2 and mocked provider behavior, so they require no PostgreSQL, Redis, Docker, provider key, or external request:
 
 ```bash
 ./mvnw test
 ```
 
-Frontend verification:
+Frontend tests and production build:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm test
 npm run build
 ```
 
-Automated tests mock provider behavior and never spend provider requests.
+The current verified baseline is 43 backend tests and 7 frontend tests. GitHub Actions runs both suites on pushes to `main` and pull requests targeting `main`.
 
-## Runtime behavior
+## MVP Tradeoffs
 
-The frontend loads initial data through REST and subscribes to selected league
-topics under `/topic/leagues/{leagueId}/matches`. Match messages cause a REST
-refetch of the active filter. If Redis is unavailable, cache failures are logged
-and PostgreSQL-backed reads continue. If WebSocket connectivity is lost,
-existing REST content stays visible while the client retries.
+- Free-tier provider limits favor conservative scheduled synchronization rather than second-by-second polling.
+- Spring's STOMP simple broker is suitable for this single-instance MVP, not horizontal scaling.
+- Authentication is intentionally deferred; the local demo user makes the complete flow easy to evaluate.
+- Cache invalidation is broad for clarity and correctness at the current scale.
+- Live provider verification requires an externally supplied `API_FOOTBALL_KEY`.
