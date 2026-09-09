@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-soccer_platform}
+      POSTGRES_USER: ${DB_USER:-soccer}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-soccer_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - soccer_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-soccer_platform}
+      DB_USER: ${DB_USER:-soccer}
+      DB_PASSWORD: ${DB_PASSWORD:-soccer_dev}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-3000}
+      DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-true}
+      SOCCER_SYNC_ENABLED: ${SOCCER_SYNC_ENABLED:-false}
+      API_FOOTBALL_KEY: ${API_FOOTBALL_KEY:-}
+    ports:
+      - "${BACKEND_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/leagues || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:${BACKEND_PORT:-8080}
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  soccer_postgres_data:

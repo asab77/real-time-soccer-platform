@@ -1,0 +1,8 @@
+.git
+.idea
+.env
+.env.*
+frontend
+target
+*.iml
+README.md

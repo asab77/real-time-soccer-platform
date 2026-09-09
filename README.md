@@ -1,136 +1,148 @@
 # Soccer Platform
 
-A beginner-readable full-stack MVP for following soccer leagues and seeing their
-matches. The Spring Boot backend owns persistence and provider synchronization;
-the React frontend uses REST for its initial state and WebSockets for update
-notifications.
+A beginner-readable full-stack MVP for following soccer leagues and viewing
+their matches. Spring Boot serves REST and STOMP WebSocket APIs, PostgreSQL is
+the source of truth, Redis provides disposable response caching, and React
+renders the browser interface.
 
-## Requirements
+## Architecture
 
-- Java 21
-- PostgreSQL
-- Redis
-- Node.js 20 or newer
-
-## Local database configuration
-
-The application defaults to a local database named `soccer_platform` with the
-username and password `postgres`. Override those values when needed:
-
-```bash
-export DB_URL=jdbc:postgresql://localhost:5432/soccer_platform
-export DB_USERNAME=postgres
-export DB_PASSWORD=your_password
+```text
+Browser (React)
+  |-- REST + STOMP WebSocket --> Spring Boot
+                                   |-- JPA --> PostgreSQL
+                                   |-- cache --> Redis
+                                   `-- optional sync --> API-Football
 ```
 
-## Local Redis configuration
+Flyway owns the PostgreSQL schema. Hibernate validates entity mappings but does
+not create or alter production tables.
 
-Redis caches match response DTOs for 45 seconds by default. PostgreSQL remains
-the source of truth. Start a local Redis container with:
+## Docker Compose quick start
+
+Prerequisite: Docker Desktop or another Docker installation with Compose.
 
 ```bash
-docker run --name soccer-redis -p 6379:6379 -d redis:7-alpine
+docker compose up --build
 ```
 
-If Docker is unavailable on macOS, install Redis yourself with Homebrew and run
-`brew services start redis`. The application accepts these overrides:
+Then open the frontend at `http://localhost:3000`. The backend is available at
+`http://localhost:8080`.
+
+Compose waits for PostgreSQL and Redis health checks before starting the
+backend. Flyway runs automatically against a fresh database. The idempotent demo
+initializer creates the Demo User and configured leagues only when missing.
+
+Stop while preserving PostgreSQL data:
 
 ```bash
+docker compose down
+```
+
+### Environment variables
+
+The defaults are local-development values. Override them in your shell or an
+ignored `.env.compose` file:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `DB_NAME` | `soccer_platform` | PostgreSQL database |
+| `DB_USER` | `soccer` | PostgreSQL user |
+| `DB_PASSWORD` | `soccer_dev` | Local-only PostgreSQL password |
+| `POSTGRES_PORT` | `5432` | Host PostgreSQL port |
+| `REDIS_PORT` | `6379` | Host Redis port |
+| `BACKEND_PORT` | `8080` | Host backend port |
+| `FRONTEND_PORT` | `3000` | Host frontend port |
+| `DEMO_DATA_ENABLED` | `true` | Create local demo data |
+| `SOCCER_SYNC_ENABLED` | `false` | Enable scheduled provider sync |
+| `API_FOOTBALL_KEY` | empty | Optional provider credential |
+
+Never commit real credentials. `.env`, `.env.*`, `.env.compose`, and
+`application-local.properties` are ignored.
+
+Enable scheduled synchronization only after supplying the key outside Git:
+
+```bash
+export API_FOOTBALL_KEY=<your-key>
+export SOCCER_SYNC_ENABLED=true
+docker compose up --build
+```
+
+The backend starts without the key while scheduling is disabled.
+
+### Manual fixture synchronization
+
+One manual call consumes one provider request:
+
+```bash
+curl -X POST "http://localhost:8080/internal/sync/fixtures?externalLeagueId=39&season=2026&date=2026-09-06"
+```
+
+Only run it when a key is configured and you intend to spend a request.
+
+### Persistence and intentional reset
+
+PostgreSQL uses the named volume `soccer_postgres_data`; normal restarts and
+`docker compose down` preserve its data. To intentionally erase the local
+Compose database and rebuild it from Flyway:
+
+```bash
+docker compose down --volumes
+docker compose up --build
+```
+
+The first command permanently removes the local Compose database volume.
+
+## Running without Docker
+
+Requirements: Java 21, PostgreSQL, Redis, and Node.js 20 or newer.
+
+```bash
+export DB_HOST=localhost
+export DB_PORT=5432
+export DB_NAME=soccer_platform
+export DB_USER=postgres
+export DB_PASSWORD=your_local_password
 export REDIS_HOST=localhost
 export REDIS_PORT=6379
-export REDIS_PASSWORD=your_password
-export MATCH_CACHE_TTL=45s
-```
-
-Do not set `REDIS_PASSWORD` when the local Redis server has no password.
-
-## Run
-
-```bash
-./mvnw test
 ./mvnw spring-boot:run
 ```
-
-The backend creates an idempotent local demo user and a small league catalog by
-default. Disable this outside local demos with `DEMO_DATA_ENABLED=false`.
-
-## Frontend
 
 In a second terminal:
 
 ```bash
 cd frontend
 npm install
+npm run dev
+```
+
+Vite runs at `http://localhost:5173` and defaults to the backend at
+`http://localhost:8080`. Override these with `VITE_API_BASE_URL` and
+`FRONTEND_ORIGIN` when needed.
+
+## Tests and builds
+
+Backend tests use H2 and need no PostgreSQL, Redis, or provider key:
+
+```bash
+./mvnw test
+```
+
+Frontend verification:
+
+```bash
+cd frontend
+npm install
 npm test
-npm run dev
+npm run build
 ```
 
-Open `http://localhost:5173`. The frontend defaults to a backend at
-`http://localhost:8080`. Override it when needed:
+Automated tests mock provider behavior and never spend provider requests.
 
-```bash
-export VITE_API_BASE_URL=http://localhost:8080
-npm run dev
-```
+## Runtime behavior
 
-The backend allows the local Vite origin by default. For a different frontend
-origin, set `FRONTEND_ORIGIN` before starting Spring Boot:
-
-```bash
-export FRONTEND_ORIGIN=http://localhost:5173
-```
-
-## Demo flow
-
-1. Start PostgreSQL and Redis.
-2. Start the Spring Boot backend.
-3. Start the Vite frontend.
-4. Select or remove leagues in the preferences panel.
-5. Use the All, Live, Scheduled, and Finished match filters.
-
-The page loads data through REST. It subscribes only to the selected league
-topics under `/topic/leagues/{leagueId}/matches`. When a match-created or
-match-updated message arrives, it refetches the current filtered REST feed so
-the server remains the source of truth. If WebSocket connectivity is lost, the
-existing REST content stays available and the client retries automatically.
-
-## API-Football configuration
-
-Set the API key through an environment variable before manually synchronizing
-fixtures:
-
-```bash
-export API_FOOTBALL_KEY=<your-api-key>
-```
-
-Never commit the API key or a local secrets file. Files named `.env`, `.env.*`,
-and `application-local.properties` are ignored by Git.
-
-One manual synchronization fetches fixtures for one configured league on one
-date and consumes one API-Football request:
-
-```bash
-curl -X POST "http://localhost:8080/internal/sync/fixtures?externalLeagueId=39&season=2026&date=2026-09-06"
-```
-
-## Demonstrating match caching locally
-
-1. Start PostgreSQL, Redis, and the application.
-2. Run the same request twice:
-
-```bash
-curl "http://localhost:8080/leagues/1/matches?status=LIVE"
-curl "http://localhost:8080/leagues/1/matches?status=LIVE"
-```
-
-The first request is a cache miss and reads PostgreSQL. The second request is a
-cache hit until the TTL expires. Inspect the key without changing application
-behavior:
-
-```bash
-redis-cli KEYS 'leagueMatches::*'
-```
-
-To demonstrate automatic invalidation, run one fixture synchronization. After
-the database transaction commits, both match cache regions are cleared. The next
-match request reads the updated PostgreSQL data and repopulates Redis.
+The frontend loads initial data through REST and subscribes to selected league
+topics under `/topic/leagues/{leagueId}/matches`. Match messages cause a REST
+refetch of the active filter. If Redis is unavailable, cache failures are logged
+and PostgreSQL-backed reads continue. If WebSocket connectivity is lost,
+existing REST content stays visible while the client retries.
