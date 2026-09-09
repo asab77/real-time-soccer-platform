@@ -1,12 +1,16 @@
-# Soccer Platform Backend
+# Soccer Platform
 
-Initial Spring Boot foundation for a soccer match platform.
+A beginner-readable full-stack MVP for following soccer leagues and seeing their
+matches. The Spring Boot backend owns persistence and provider synchronization;
+the React frontend uses REST for its initial state and WebSockets for update
+notifications.
 
 ## Requirements
 
 - Java 21
 - PostgreSQL
 - Redis
+- Node.js 20 or newer
 
 ## Local database configuration
 
@@ -46,6 +50,49 @@ Do not set `REDIS_PASSWORD` when the local Redis server has no password.
 ./mvnw test
 ./mvnw spring-boot:run
 ```
+
+The backend creates an idempotent local demo user and a small league catalog by
+default. Disable this outside local demos with `DEMO_DATA_ENABLED=false`.
+
+## Frontend
+
+In a second terminal:
+
+```bash
+cd frontend
+npm install
+npm test
+npm run dev
+```
+
+Open `http://localhost:5173`. The frontend defaults to a backend at
+`http://localhost:8080`. Override it when needed:
+
+```bash
+export VITE_API_BASE_URL=http://localhost:8080
+npm run dev
+```
+
+The backend allows the local Vite origin by default. For a different frontend
+origin, set `FRONTEND_ORIGIN` before starting Spring Boot:
+
+```bash
+export FRONTEND_ORIGIN=http://localhost:5173
+```
+
+## Demo flow
+
+1. Start PostgreSQL and Redis.
+2. Start the Spring Boot backend.
+3. Start the Vite frontend.
+4. Select or remove leagues in the preferences panel.
+5. Use the All, Live, Scheduled, and Finished match filters.
+
+The page loads data through REST. It subscribes only to the selected league
+topics under `/topic/leagues/{leagueId}/matches`. When a match-created or
+match-updated message arrives, it refetches the current filtered REST feed so
+the server remains the source of truth. If WebSocket connectivity is lost, the
+existing REST content stays available and the client retries automatically.
 
 ## API-Football configuration
 
