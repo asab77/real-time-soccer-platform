@@ -36,8 +36,8 @@ class ApiFootballStatusMapperTest {
     }
 
     @Test
-    void mapsUnknownStatusSafely() {
-        assertThat(mapper.toMatchStatus("NOT_KNOWN")).isEqualTo(MatchStatus.POSTPONED);
-        assertThat(mapper.toMatchStatus(null)).isEqualTo(MatchStatus.POSTPONED);
+    void mapsUnknownAndNullStatusesToUnknown() {
+        assertThat(mapper.toMatchStatus("NOT_KNOWN")).isEqualTo(MatchStatus.UNKNOWN);
+        assertThat(mapper.toMatchStatus(null)).isEqualTo(MatchStatus.UNKNOWN);
     }
 }

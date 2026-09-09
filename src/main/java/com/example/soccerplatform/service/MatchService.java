@@ -8,9 +8,11 @@ import com.example.soccerplatform.repository.LeaguePreferenceRepository;
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.MatchRepository;
 import com.example.soccerplatform.repository.UserRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -33,6 +35,10 @@ public class MatchService {
         this.leaguePreferenceRepository = leaguePreferenceRepository;
     }
 
+    @Cacheable(
+            cacheNames = "leagueMatches",
+            key = "#leagueId + ':' + (#status == null ? 'ALL' : #status.name())"
+    )
     @Transactional(readOnly = true)
     public List<MatchResponse> getLeagueMatches(Long leagueId, MatchStatus status) {
         if (!leagueRepository.existsById(leagueId)) {
@@ -46,6 +52,10 @@ public class MatchService {
         return toResponses(matches);
     }
 
+    @Cacheable(
+            cacheNames = "userMatches",
+            key = "#userId + ':' + (#status == null ? 'ALL' : #status.name())"
+    )
     @Transactional(readOnly = true)
     public List<MatchResponse> getUserMatches(Long userId, MatchStatus status) {
         if (!userRepository.existsById(userId)) {
@@ -59,7 +69,7 @@ public class MatchService {
                 .toList();
 
         if (leagueIds.isEmpty()) {
-            return List.of();
+            return new ArrayList<>();
         }
 
         List<Match> matches = status == null
@@ -72,7 +82,7 @@ public class MatchService {
     private List<MatchResponse> toResponses(List<Match> matches) {
         return matches.stream()
                 .map(this::toResponse)
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
     }
 
     private MatchResponse toResponse(Match match) {

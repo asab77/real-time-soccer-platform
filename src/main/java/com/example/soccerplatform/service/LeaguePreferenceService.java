@@ -1,5 +1,6 @@
 package com.example.soccerplatform.service;
 
+import com.example.soccerplatform.cache.MatchCacheInvalidationEvent;
 import com.example.soccerplatform.dto.CreateLeaguePreferenceRequest;
 import com.example.soccerplatform.dto.LeaguePreferenceResponse;
 import com.example.soccerplatform.dto.LeagueResponse;
@@ -12,6 +13,7 @@ import com.example.soccerplatform.repository.LeaguePreferenceRepository;
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.UserRepository;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,15 +25,18 @@ public class LeaguePreferenceService {
     private final UserRepository userRepository;
     private final LeagueRepository leagueRepository;
     private final LeaguePreferenceRepository leaguePreferenceRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     public LeaguePreferenceService(
             UserRepository userRepository,
             LeagueRepository leagueRepository,
-            LeaguePreferenceRepository leaguePreferenceRepository
+            LeaguePreferenceRepository leaguePreferenceRepository,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.userRepository = userRepository;
         this.leagueRepository = leagueRepository;
         this.leaguePreferenceRepository = leaguePreferenceRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -57,6 +62,7 @@ public class LeaguePreferenceService {
             throw duplicatePreference();
         }
 
+        eventPublisher.publishEvent(MatchCacheInvalidationEvent.userMatchCache());
         return new LeaguePreferenceResponse(userId, request.leagueId());
     }
 
@@ -86,6 +92,7 @@ public class LeaguePreferenceService {
                 .orElseThrow(() -> new ResourceNotFoundException("League preference not found"));
 
         leaguePreferenceRepository.delete(preference);
+        eventPublisher.publishEvent(MatchCacheInvalidationEvent.userMatchCache());
     }
 
     private void verifyUserExists(Long userId) {

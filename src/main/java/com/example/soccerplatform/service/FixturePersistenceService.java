@@ -1,6 +1,10 @@
 package com.example.soccerplatform.service;
 
+import com.example.soccerplatform.cache.MatchCacheInvalidationEvent;
 import com.example.soccerplatform.dto.FixtureSyncSummary;
+import com.example.soccerplatform.dto.MatchUpdateMessage;
+import com.example.soccerplatform.dto.MatchUpdateType;
+import com.example.soccerplatform.event.MatchUpdatedEvent;
 import com.example.soccerplatform.entity.League;
 import com.example.soccerplatform.entity.Match;
 import com.example.soccerplatform.entity.MatchStatus;
@@ -11,10 +15,12 @@ import com.example.soccerplatform.integration.apifootball.ApiFootballStatusMappe
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.MatchRepository;
 import com.example.soccerplatform.repository.TeamRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -24,23 +30,27 @@ public class FixturePersistenceService {
     private final TeamRepository teamRepository;
     private final MatchRepository matchRepository;
     private final ApiFootballStatusMapper statusMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public FixturePersistenceService(
             LeagueRepository leagueRepository,
             TeamRepository teamRepository,
             MatchRepository matchRepository,
-            ApiFootballStatusMapper statusMapper
+            ApiFootballStatusMapper statusMapper,
+            ApplicationEventPublisher eventPublisher
     ) {
         this.leagueRepository = leagueRepository;
         this.teamRepository = teamRepository;
         this.matchRepository = matchRepository;
         this.statusMapper = statusMapper;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
     public FixtureSyncSummary persist(List<ApiFootballFixture> fixtures) {
         int created = 0;
         int updated = 0;
+        int meaningfulChanges = 0;
 
         for (ApiFootballFixture fixture : fixtures) {
             validateFixture(fixture);
@@ -52,12 +62,19 @@ public class FixturePersistenceService {
             Optional<Match> existingMatch = matchRepository.findByExternalId(fixture.fixture().id());
 
             Match match;
+            MatchUpdateType updateType;
+            boolean changed;
             if (existingMatch.isPresent()) {
                 match = existingMatch.get();
+                changed = !Objects.equals(match.getStartTime(), fixture.fixture().date())
+                        || !Objects.equals(match.getHomeScore(), fixture.goals().home())
+                        || !Objects.equals(match.getAwayScore(), fixture.goals().away())
+                        || match.getStatus() != status;
                 match.setStartTime(fixture.fixture().date());
                 match.setScore(fixture.goals().home(), fixture.goals().away());
                 match.setStatus(status);
                 updated++;
+                updateType = MatchUpdateType.UPDATED;
             } else {
                 match = new Match(
                         league,
@@ -69,12 +86,30 @@ public class FixturePersistenceService {
                 match.setExternalId(fixture.fixture().id());
                 match.setScore(fixture.goals().home(), fixture.goals().away());
                 created++;
+                changed = true;
+                updateType = MatchUpdateType.CREATED;
             }
 
             matchRepository.save(match);
+            if (changed) {
+                meaningfulChanges++;
+                eventPublisher.publishEvent(new MatchUpdatedEvent(new MatchUpdateMessage(
+                        match.getId(), league.getId(), homeTeam.getId(), homeTeam.getName(),
+                        awayTeam.getId(), awayTeam.getName(), match.getStartTime(),
+                        match.getHomeScore(), match.getAwayScore(), match.getStatus(), updateType
+                )));
+            }
         }
 
-        return new FixtureSyncSummary(fixtures.size(), created, updated);
+        org.slf4j.LoggerFactory.getLogger(FixturePersistenceService.class)
+                .info("Meaningful match changes detected: {}", meaningfulChanges);
+
+        FixtureSyncSummary summary = new FixtureSyncSummary(fixtures.size(), created, updated);
+        if (!fixtures.isEmpty()) {
+            eventPublisher.publishEvent(MatchCacheInvalidationEvent.allMatchCaches());
+        }
+
+        return summary;
     }
 
     private League findOrCreateLeague(ApiFootballFixture.League providerLeague) {

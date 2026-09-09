@@ -20,7 +20,7 @@ public class ApiFootballStatusMapper {
 
     public MatchStatus toMatchStatus(String providerStatus) {
         if (providerStatus == null) {
-            return MatchStatus.POSTPONED;
+            return MatchStatus.UNKNOWN;
         }
         if ("NS".equals(providerStatus) || "TBD".equals(providerStatus)) {
             return MatchStatus.SCHEDULED;
@@ -35,6 +35,6 @@ public class ApiFootballStatusMapper {
             return MatchStatus.POSTPONED;
         }
 
-        return MatchStatus.POSTPONED;
+        return MatchStatus.UNKNOWN;
     }
 }

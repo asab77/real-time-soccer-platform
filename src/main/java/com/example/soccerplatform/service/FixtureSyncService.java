@@ -5,6 +5,8 @@ import com.example.soccerplatform.exception.InvalidSyncRequestException;
 import com.example.soccerplatform.integration.apifootball.ApiFootballClient;
 import com.example.soccerplatform.integration.apifootball.ApiFootballFixture;
 import com.example.soccerplatform.integration.apifootball.ApiFootballProperties;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -12,6 +14,8 @@ import java.util.List;
 
 @Service
 public class FixtureSyncService {
+
+    private static final Logger logger = LoggerFactory.getLogger(FixtureSyncService.class);
 
     private final ApiFootballClient apiFootballClient;
     private final ApiFootballProperties properties;
@@ -36,7 +40,14 @@ public class FixtureSyncService {
                 date
         );
 
-        return fixturePersistenceService.persist(fixtures);
+        FixtureSyncSummary summary = fixturePersistenceService.persist(fixtures);
+        logger.info(
+                "Fixture synchronization completed: received={}, created={}, updated={}",
+                summary.fixturesReceived(),
+                summary.matchesCreated(),
+                summary.matchesUpdated()
+        );
+        return summary;
     }
 
     private void validateRequest(Long externalLeagueId, int season, LocalDate date) {
