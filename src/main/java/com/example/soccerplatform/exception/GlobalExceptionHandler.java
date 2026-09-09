@@ -54,6 +54,11 @@ public class GlobalExceptionHandler {
         return buildResponse(HttpStatus.BAD_GATEWAY, "Soccer data provider request failed");
     }
 
+    @ExceptionHandler(InternalApiKeyException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnauthorized(InternalApiKeyException exception) {
+        return buildResponse(HttpStatus.UNAUTHORIZED, "Unauthorized");
+    }
+
     private ResponseEntity<ApiErrorResponse> buildResponse(HttpStatus status, String message) {
         return ResponseEntity.status(status)
                 .body(new ApiErrorResponse(status.value(), message));
