@@ -180,9 +180,11 @@ Never place the real key in source files, Compose files, frontend configuration,
 | `DB_PASSWORD` | `postgres` | PostgreSQL password; override outside source control |
 | `REDIS_HOST` | `localhost` | Redis host; Compose supplies `redis` |
 | `REDIS_PORT` | `6379` | Redis port |
+| `SPRING_DATA_REDIS_URL` | empty | Optional complete `redis://` or `rediss://` managed-store URL; overrides host/port |
 | `MATCH_CACHE_TTL` | `45s` | Match-feed cache lifetime |
 | `FRONTEND_ORIGIN` | `http://localhost:5173` | Backend REST and WebSocket CORS origin; Compose uses port 3000 |
 | `VITE_API_BASE_URL` | `http://localhost:8080` | Backend URL embedded in the frontend build |
+| `PORT` | `8080` | Backend HTTP port; Render supplies this automatically |
 
 Docker Compose also supports host-port overrides such as `FRONTEND_PORT`, `BACKEND_PORT`, and `POSTGRES_PORT`. Local-only environment files matching `.env*` are ignored by Git.
 
@@ -204,6 +206,49 @@ npm run build
 ```
 
 The current verified baseline is 43 backend tests and 7 frontend tests. GitHub Actions runs both suites on pushes to `main` and pull requests targeting `main`.
+
+## Deployment
+
+The intended Render architecture keeps the same application boundaries:
+
+```text
+Render Static Site (React)
+→ Render Web Service (Spring Boot)
+→ Render PostgreSQL
+→ Render Key Value (Redis-compatible)
+```
+
+Use a **Render Static Site** for the frontend. It serves the Vite output through
+Render's CDN without running an nginx container. Configure its root directory as
+`frontend`, build command as `npm ci && npm run build`, and publish directory as
+`dist`. Set `VITE_API_BASE_URL` to the backend's public HTTPS URL. If client-side
+routes are added, configure a rewrite from `/*` to `/index.html`.
+
+Use a **Docker Web Service** for the backend with the repository's root
+`Dockerfile`. Configure `/actuator/health` as its health-check path. Render
+supplies `PORT`; Spring defaults to 8080 elsewhere.
+
+Configure these backend environment variable names in Render:
+
+- `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
+- `SPRING_DATA_REDIS_URL` using the managed Key Value internal URL
+- `FRONTEND_ORIGIN` using the frontend's public HTTPS origin, without a trailing slash
+- `API_FOOTBALL_KEY` as a secret only when live synchronization is needed
+- `SOCCER_SYNC_ENABLED`, which remains `false` unless explicitly enabled
+- Optional scheduler/cache tuning: `SOCCER_SYNC_INTERVAL`,
+  `SOCCER_SYNC_INITIAL_DELAY`, `SOCCER_SYNC_START_UTC`, `SOCCER_SYNC_END_UTC`,
+  and `MATCH_CACHE_TTL`
+
+Place the backend, PostgreSQL, and Key Value services in the same Render region
+and use their internal connection details. Flyway runs automatically before
+Hibernate validates the schema. The API key belongs only in the backend
+service's secret environment; never expose it to the frontend build.
+
+No `render.yaml` is committed yet. The frontend and backend public URLs are
+assigned during service creation, and database/Key Value plans and regions are
+account choices. Creating these resources once in the dashboard avoids encoding
+guessed plans or circular URL assumptions; a Blueprint can be added after those
+deployment choices are known.
 
 ## MVP Tradeoffs
 
