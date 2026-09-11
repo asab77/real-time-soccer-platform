@@ -1,6 +1,7 @@
 package com.example.soccerplatform.service;
 
 import com.example.soccerplatform.cache.MatchCacheInvalidationEvent;
+import com.example.soccerplatform.dto.FixtureSyncSummary;
 import com.example.soccerplatform.entity.League;
 import com.example.soccerplatform.entity.Match;
 import com.example.soccerplatform.entity.MatchStatus;
@@ -17,6 +18,7 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -52,20 +54,28 @@ class FixturePersistenceServiceTest {
         when(teamRepository.findByExternalId(61L)).thenReturn(Optional.of(awayTeam));
         when(matchRepository.findByExternalId(54321L)).thenReturn(Optional.of(existingMatch));
         when(existingMatch.getStartTime()).thenReturn(START_TIME);
+        when(existingMatch.getHomeScore()).thenReturn(null);
+        when(existingMatch.getAwayScore()).thenReturn(null);
         when(existingMatch.getStatus()).thenReturn(MatchStatus.SCHEDULED);
     }
 
     @Test
     void identicalMatchProducesNoEvents() {
-        service.persist(league, List.of(fixture(MatchStatus.SCHEDULED, null, null)));
+        FixtureSyncSummary summary = service.persist(
+                league, List.of(fixture(MatchStatus.SCHEDULED, null, null))
+        );
 
+        assertThat(summary).isEqualTo(new FixtureSyncSummary(1, 0, 0));
         verify(eventPublisher, never()).publishEvent(any());
     }
 
     @Test
-    void changedMatchProducesUpdateAndCacheInvalidationEvents() {
-        service.persist(league, List.of(fixture(MatchStatus.LIVE, 1, 0)));
+    void oneChangedFieldProducesOneUpdateAndEvents() {
+        FixtureSyncSummary summary = service.persist(
+                league, List.of(fixture(MatchStatus.LIVE, null, null))
+        );
 
+        assertThat(summary).isEqualTo(new FixtureSyncSummary(1, 0, 1));
         verify(eventPublisher).publishEvent(any(MatchUpdatedEvent.class));
         verify(eventPublisher).publishEvent(any(MatchCacheInvalidationEvent.class));
     }

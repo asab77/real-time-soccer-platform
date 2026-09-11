@@ -64,7 +64,6 @@ public class FixturePersistenceService {
                 match.setStartTime(fixture.startTime());
                 match.setScore(fixture.homeScore(), fixture.awayScore());
                 match.setStatus(status);
-                updated++;
                 updateType = MatchUpdateType.UPDATED;
             } else {
                 match = new Match(
@@ -83,6 +82,9 @@ public class FixturePersistenceService {
 
             matchRepository.save(match);
             if (changed) {
+                if (updateType == MatchUpdateType.UPDATED) {
+                    updated++;
+                }
                 meaningfulChanges++;
                 eventPublisher.publishEvent(new MatchUpdatedEvent(new MatchUpdateMessage(
                         match.getId(), league.getId(), homeTeam.getId(), homeTeam.getName(),

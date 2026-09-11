@@ -1,11 +1,13 @@
 package com.example.soccerplatform.service;
 
 import com.example.soccerplatform.dto.FixtureSyncSummary;
+import com.example.soccerplatform.cache.MatchCacheInvalidationEvent;
 import com.example.soccerplatform.entity.League;
 import com.example.soccerplatform.entity.Match;
 import com.example.soccerplatform.entity.MatchStatus;
 import com.example.soccerplatform.integration.ProviderFixture;
 import com.example.soccerplatform.integration.SoccerDataProvider;
+import com.example.soccerplatform.event.MatchUpdatedEvent;
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.MatchRepository;
 import com.example.soccerplatform.repository.TeamRepository;
@@ -15,6 +17,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.test.context.event.ApplicationEvents;
+import org.springframework.test.context.event.RecordApplicationEvents;
+
+import jakarta.persistence.EntityManager;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -25,6 +31,7 @@ import static org.mockito.Mockito.when;
 
 @SpringBootTest
 @Transactional
+@RecordApplicationEvents
 class FixtureSyncServiceTest {
 
     private static final LocalDate DATE = LocalDate.of(2026, 9, 6);
@@ -33,6 +40,8 @@ class FixtureSyncServiceTest {
     @Autowired LeagueRepository leagueRepository;
     @Autowired TeamRepository teamRepository;
     @Autowired MatchRepository matchRepository;
+    @Autowired EntityManager entityManager;
+    @Autowired ApplicationEvents applicationEvents;
 
     @MockitoBean SoccerDataProvider soccerDataProvider;
 
@@ -77,6 +86,36 @@ class FixtureSyncServiceTest {
         assertThat(match.getHomeScore()).isEqualTo(1);
         assertThat(match.getAwayScore()).isZero();
         assertThat(match.getStatus()).isEqualTo(MatchStatus.LIVE);
+    }
+
+    @Test
+    void identicalFixtureAfterDatabaseRoundTripProducesNoUpdateOrEvents() {
+        ProviderFixture fixture = fixture(MatchStatus.SCHEDULED, null, null);
+        when(soccerDataProvider.getFixtures("Premier League", DATE, DATE))
+                .thenReturn(List.of(fixture));
+
+        fixtureSyncService.synchronize(premierLeague.getId(), DATE);
+        entityManager.flush();
+        entityManager.clear();
+
+        Match stored = matchRepository.findByExternalId(fixture.externalId()).orElseThrow();
+        assertThat(stored.getStartTime()).isEqualTo(fixture.startTime());
+        assertThat(stored.getHomeScore()).isEqualTo(fixture.homeScore());
+        assertThat(stored.getAwayScore()).isEqualTo(fixture.awayScore());
+        assertThat(stored.getStatus()).isEqualTo(fixture.status());
+        long updateEventsBefore = applicationEvents.stream(MatchUpdatedEvent.class).count();
+        long cacheEventsBefore = applicationEvents
+                .stream(MatchCacheInvalidationEvent.class).count();
+
+        FixtureSyncSummary secondSummary = fixtureSyncService.synchronize(
+                premierLeague.getId(), DATE
+        );
+
+        assertThat(secondSummary).isEqualTo(new FixtureSyncSummary(1, 0, 0));
+        assertThat(applicationEvents.stream(MatchUpdatedEvent.class).count())
+                .isEqualTo(updateEventsBefore);
+        assertThat(applicationEvents.stream(MatchCacheInvalidationEvent.class).count())
+                .isEqualTo(cacheEventsBefore);
     }
 
     private ProviderFixture fixture(
