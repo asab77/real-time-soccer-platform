@@ -1,13 +1,15 @@
 package com.example.soccerplatform.service;
 
 import com.example.soccerplatform.dto.FixtureSyncSummary;
+import com.example.soccerplatform.entity.League;
 import com.example.soccerplatform.entity.Match;
 import com.example.soccerplatform.entity.MatchStatus;
-import com.example.soccerplatform.integration.apifootball.ApiFootballClient;
-import com.example.soccerplatform.integration.apifootball.ApiFootballFixture;
+import com.example.soccerplatform.integration.ProviderFixture;
+import com.example.soccerplatform.integration.SoccerDataProvider;
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.MatchRepository;
 import com.example.soccerplatform.repository.TeamRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -25,56 +27,46 @@ import static org.mockito.Mockito.when;
 @Transactional
 class FixtureSyncServiceTest {
 
-    private static final long PREMIER_LEAGUE_ID = 39L;
-    private static final int SEASON = 2026;
     private static final LocalDate DATE = LocalDate.of(2026, 9, 6);
 
-    @Autowired
-    private FixtureSyncService fixtureSyncService;
+    @Autowired FixtureSyncService fixtureSyncService;
+    @Autowired LeagueRepository leagueRepository;
+    @Autowired TeamRepository teamRepository;
+    @Autowired MatchRepository matchRepository;
 
-    @Autowired
-    private LeagueRepository leagueRepository;
+    @MockitoBean SoccerDataProvider soccerDataProvider;
 
-    @Autowired
-    private TeamRepository teamRepository;
+    private League premierLeague;
 
-    @Autowired
-    private MatchRepository matchRepository;
-
-    @MockitoBean
-    private ApiFootballClient apiFootballClient;
+    @BeforeEach
+    void setUp() {
+        premierLeague = leagueRepository.save(new League("Premier League"));
+    }
 
     @Test
     void createsMatchFromProviderFixture() {
-        when(apiFootballClient.getFixtures(PREMIER_LEAGUE_ID, SEASON, DATE))
-                .thenReturn(List.of(fixture("NS", null, null)));
+        when(soccerDataProvider.getFixtures("Premier League", DATE, DATE))
+                .thenReturn(List.of(fixture(MatchStatus.SCHEDULED, null, null)));
 
-        FixtureSyncSummary summary = fixtureSyncService.synchronize(
-                PREMIER_LEAGUE_ID,
-                SEASON,
-                DATE
-        );
+        FixtureSyncSummary summary = fixtureSyncService.synchronize(premierLeague.getId(), DATE);
 
         Match match = matchRepository.findByExternalId(12345L).orElseThrow();
         assertThat(summary).isEqualTo(new FixtureSyncSummary(1, 1, 0));
         assertThat(match.getStatus()).isEqualTo(MatchStatus.SCHEDULED);
         assertThat(match.getHomeTeam().getName()).isEqualTo("Arsenal");
         assertThat(match.getAwayTeam().getName()).isEqualTo("Chelsea");
+        assertThat(match.getLeague().getId()).isEqualTo(premierLeague.getId());
     }
 
     @Test
     void secondSyncUpdatesMatchWithoutDuplicatingResources() {
-        ApiFootballFixture scheduled = fixture("NS", null, null);
-        ApiFootballFixture live = fixture("1H", 1, 0);
-        when(apiFootballClient.getFixtures(PREMIER_LEAGUE_ID, SEASON, DATE))
-                .thenReturn(List.of(scheduled))
-                .thenReturn(List.of(live));
+        when(soccerDataProvider.getFixtures("Premier League", DATE, DATE))
+                .thenReturn(List.of(fixture(MatchStatus.SCHEDULED, null, null)))
+                .thenReturn(List.of(fixture(MatchStatus.LIVE, 1, 0)));
 
-        fixtureSyncService.synchronize(PREMIER_LEAGUE_ID, SEASON, DATE);
+        fixtureSyncService.synchronize(premierLeague.getId(), DATE);
         FixtureSyncSummary secondSummary = fixtureSyncService.synchronize(
-                PREMIER_LEAGUE_ID,
-                SEASON,
-                DATE
+                premierLeague.getId(), DATE
         );
 
         Match match = matchRepository.findByExternalId(12345L).orElseThrow();
@@ -87,19 +79,19 @@ class FixtureSyncServiceTest {
         assertThat(match.getStatus()).isEqualTo(MatchStatus.LIVE);
     }
 
-    private ApiFootballFixture fixture(String status, Integer homeScore, Integer awayScore) {
-        return new ApiFootballFixture(
-                new ApiFootballFixture.Fixture(
-                        12345L,
-                        OffsetDateTime.parse("2026-09-06T15:00:00Z"),
-                        new ApiFootballFixture.Status(status)
-                ),
-                new ApiFootballFixture.League(PREMIER_LEAGUE_ID, "Premier League"),
-                new ApiFootballFixture.Teams(
-                        new ApiFootballFixture.Team(42L, "Arsenal"),
-                        new ApiFootballFixture.Team(49L, "Chelsea")
-                ),
-                new ApiFootballFixture.Goals(homeScore, awayScore)
+    private ProviderFixture fixture(
+            MatchStatus status,
+            Integer homeScore,
+            Integer awayScore
+    ) {
+        return new ProviderFixture(
+                12345L,
+                OffsetDateTime.parse("2026-09-06T15:00:00Z"),
+                status,
+                new ProviderFixture.ProviderTeam(42L, "Arsenal"),
+                new ProviderFixture.ProviderTeam(49L, "Chelsea"),
+                homeScore,
+                awayScore
         );
     }
 }

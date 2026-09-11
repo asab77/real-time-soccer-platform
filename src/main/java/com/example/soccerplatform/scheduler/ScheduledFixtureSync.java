@@ -1,6 +1,7 @@
 package com.example.soccerplatform.scheduler;
 
-import com.example.soccerplatform.integration.apifootball.ApiFootballProperties;
+import com.example.soccerplatform.integration.footballdata.FootballDataProperties;
+import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.service.FixtureSyncService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -18,18 +19,21 @@ import java.time.ZoneOffset;
 public class ScheduledFixtureSync {
     private static final Logger logger = LoggerFactory.getLogger(ScheduledFixtureSync.class);
     private final FixtureSyncService fixtureSyncService;
-    private final ApiFootballProperties properties;
+    private final FootballDataProperties properties;
+    private final LeagueRepository leagueRepository;
     private final LocalTime activeStartUtc;
     private final LocalTime activeEndUtc;
 
     public ScheduledFixtureSync(
             FixtureSyncService fixtureSyncService,
-            ApiFootballProperties properties,
+            FootballDataProperties properties,
+            LeagueRepository leagueRepository,
             @Value("${soccer.sync.active-start-utc:10:00}") LocalTime activeStartUtc,
             @Value("${soccer.sync.active-end-utc:23:59}") LocalTime activeEndUtc
     ) {
         this.fixtureSyncService = fixtureSyncService;
         this.properties = properties;
+        this.leagueRepository = leagueRepository;
         this.activeStartUtc = activeStartUtc;
         this.activeEndUtc = activeEndUtc;
     }
@@ -45,16 +49,21 @@ public class ScheduledFixtureSync {
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
         int success = 0;
         logger.info("Scheduled fixture synchronization started for {}", today);
-        for (ApiFootballProperties.ConfiguredLeague league : properties.leagues()) {
+        for (FootballDataProperties.Competition competition : properties.competitions()) {
             try {
-                fixtureSyncService.synchronize(league.externalId(), today.getYear(), today);
+                var league = leagueRepository.findByNameIgnoreCase(competition.name());
+                if (league.isEmpty()) {
+                    logger.warn("Scheduled sync skipped missing league {}", competition.name());
+                    continue;
+                }
+                fixtureSyncService.synchronize(league.get().getId(), today);
                 success++;
             } catch (RuntimeException exception) {
                 logger.warn("Scheduled sync failed for league {} ({})",
-                        league.externalId(), exception.getClass().getSimpleName());
+                        competition.code(), exception.getClass().getSimpleName());
             }
         }
         logger.info("Scheduled fixture synchronization finished: successful={}, failed={}",
-                success, properties.leagues().size() - success);
+                success, properties.competitions().size() - success);
     }
 }

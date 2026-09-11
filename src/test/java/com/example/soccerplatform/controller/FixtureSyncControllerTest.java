@@ -2,7 +2,7 @@ package com.example.soccerplatform.controller;
 
 import com.example.soccerplatform.exception.ProviderIntegrationException;
 import com.example.soccerplatform.dto.FixtureSyncSummary;
-import com.example.soccerplatform.integration.apifootball.ApiFootballClient;
+import com.example.soccerplatform.integration.SoccerDataProvider;
 import com.example.soccerplatform.service.FixtureSyncService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -32,7 +32,7 @@ class FixtureSyncControllerTest {
     private FixtureSyncService fixtureSyncService;
 
     @MockitoBean
-    private ApiFootballClient apiFootballClient;
+    private SoccerDataProvider soccerDataProvider;
 
     @Test
     void missingKeyIsRejected() throws Exception {
@@ -67,13 +67,13 @@ class FixtureSyncControllerTest {
     @Test
     void correctKeyReachesSyncService() throws Exception {
         LocalDate date = LocalDate.of(2026, 9, 6);
-        when(fixtureSyncService.synchronize(39L, 2026, date))
+        when(fixtureSyncService.synchronize(1L, date))
                 .thenReturn(new FixtureSyncSummary(1, 2, 3));
 
         mockMvc.perform(syncRequest().header("X-Internal-Api-Key", "test-internal-key"))
                 .andExpect(status().isOk());
 
-        verify(fixtureSyncService).synchronize(39L, 2026, date);
+        verify(fixtureSyncService).synchronize(1L, date);
     }
 
     @Test
@@ -84,7 +84,7 @@ class FixtureSyncControllerTest {
 
     @Test
     void providerFailureReturnsControlledError() throws Exception {
-        when(fixtureSyncService.synchronize(39L, 2026, LocalDate.of(2026, 9, 6)))
+        when(fixtureSyncService.synchronize(1L, LocalDate.of(2026, 9, 6)))
                 .thenThrow(new ProviderIntegrationException("Provider unavailable"));
 
         mockMvc.perform(syncRequest().header("X-Internal-Api-Key", "test-internal-key"))
@@ -95,8 +95,7 @@ class FixtureSyncControllerTest {
 
     private static org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder syncRequest() {
         return post("/internal/sync/fixtures")
-                .queryParam("externalLeagueId", "39")
-                .queryParam("season", "2026")
+                .queryParam("leagueId", "1")
                 .queryParam("date", "2026-09-06");
     }
 }

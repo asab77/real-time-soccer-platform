@@ -118,7 +118,7 @@ erDiagram
 | `DELETE` | `/users/{userId}/preferences/{leagueId}` | Unfollow a league |
 | `GET` | `/users/{userId}/matches` | Retrieve a personalized match feed |
 | `GET` | `/leagues/{leagueId}/matches` | Retrieve matches for one league |
-| `POST` | `/internal/sync/fixtures` | Manually synchronize one provider league/date |
+| `POST` | `/internal/sync/fixtures` | Manually synchronize one internal league/date |
 
 Match endpoints accept status filtering, for example:
 
@@ -126,10 +126,12 @@ Match endpoints accept status filtering, for example:
 curl "http://localhost:8080/users/1/matches?status=LIVE"
 ```
 
-A manual synchronization consumes one provider request:
+A manual synchronization consumes one provider request and requires the internal API key:
 
 ```bash
-curl -X POST "http://localhost:8080/internal/sync/fixtures?externalLeagueId=39&season=2026&date=2026-09-06"
+curl -X POST \
+  -H "X-Internal-Api-Key: $INTERNAL_SYNC_API_KEY" \
+  "http://localhost:8080/internal/sync/fixtures?leagueId=1&date=2026-09-06"
 ```
 
 ## Quick Start
@@ -159,7 +161,7 @@ docker compose up --build
 The first command permanently removes the Compose-managed local database. Scheduled provider synchronization is disabled by default. To enable it, supply the provider key outside Git:
 
 ```bash
-export API_FOOTBALL_KEY=<your-key>
+export FOOTBALL_DATA_API_KEY=<your-key>
 export SOCCER_SYNC_ENABLED=true
 docker compose up --build
 ```
@@ -170,7 +172,8 @@ Never place the real key in source files, Compose files, frontend configuration,
 
 | Variable | Default | Usage |
 | --- | --- | --- |
-| `API_FOOTBALL_KEY` | empty | Backend provider credential; required only for real synchronization |
+| `FOOTBALL_DATA_API_KEY` | empty | football-data.org credential; required only for real synchronization |
+| `FOOTBALL_DATA_BASE_URL` | `https://api.football-data.org/v4` | Configurable provider base URL |
 | `SOCCER_SYNC_ENABLED` | `false` | Enables scheduled synchronization |
 | `SOCCER_SYNC_INTERVAL` | `PT1H` | Delay between scheduled synchronization runs |
 | `DB_HOST` | `localhost` | PostgreSQL host; Compose supplies `postgres` |
@@ -233,7 +236,7 @@ Configure these backend environment variable names in Render:
 - `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD`
 - `SPRING_DATA_REDIS_URL` using the managed Key Value internal URL
 - `FRONTEND_ORIGIN` using the frontend's public HTTPS origin, without a trailing slash
-- `API_FOOTBALL_KEY` as a secret only when live synchronization is needed
+- `FOOTBALL_DATA_API_KEY` as a secret only when live synchronization is needed
 - `SOCCER_SYNC_ENABLED`, which remains `false` unless explicitly enabled
 - Optional scheduler/cache tuning: `SOCCER_SYNC_INTERVAL`,
   `SOCCER_SYNC_INITIAL_DELAY`, `SOCCER_SYNC_START_UTC`, `SOCCER_SYNC_END_UTC`,
@@ -256,4 +259,4 @@ deployment choices are known.
 - Spring's STOMP simple broker is suitable for this single-instance MVP, not horizontal scaling.
 - Authentication is intentionally deferred; the local demo user makes the complete flow easy to evaluate.
 - Cache invalidation is broad for clarity and correctness at the current scale.
-- Live provider verification requires an externally supplied `API_FOOTBALL_KEY`.
+- Live provider verification requires an externally supplied `FOOTBALL_DATA_API_KEY`.

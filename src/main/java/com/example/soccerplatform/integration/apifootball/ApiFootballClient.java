@@ -4,6 +4,7 @@ import com.example.soccerplatform.exception.ProviderIntegrationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
@@ -12,6 +13,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Component
+@ConditionalOnProperty(name = "soccer.data.provider", havingValue = "api-football")
 public class ApiFootballClient {
 
     private static final String API_KEY_HEADER = "x-apisports-key";

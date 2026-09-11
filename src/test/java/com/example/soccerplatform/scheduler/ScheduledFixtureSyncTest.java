@@ -1,6 +1,8 @@
 package com.example.soccerplatform.scheduler;
 
-import com.example.soccerplatform.integration.apifootball.ApiFootballProperties;
+import com.example.soccerplatform.entity.League;
+import com.example.soccerplatform.integration.footballdata.FootballDataProperties;
+import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.service.FixtureSyncService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -11,10 +13,12 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 @SpringBootTest
 class ScheduledFixtureSyncTest {
@@ -28,18 +32,28 @@ class ScheduledFixtureSyncTest {
     @Test
     void scheduledRunDelegatesForEveryConfiguredLeague() {
         FixtureSyncService service = mock(FixtureSyncService.class);
-        ApiFootballProperties properties = new ApiFootballProperties("base", "", List.of(
-                new ApiFootballProperties.ConfiguredLeague(39L, "Premier League"),
-                new ApiFootballProperties.ConfiguredLeague(140L, "La Liga")
+        LeagueRepository repository = mock(LeagueRepository.class);
+        FootballDataProperties properties = new FootballDataProperties("base", "", List.of(
+                new FootballDataProperties.Competition("PL", "Premier League"),
+                new FootballDataProperties.Competition("PD", "La Liga")
         ));
+        League premierLeague = mock(League.class);
+        League laLiga = mock(League.class);
+        when(premierLeague.getId()).thenReturn(1L);
+        when(laLiga.getId()).thenReturn(2L);
+        when(repository.findByNameIgnoreCase("Premier League"))
+                .thenReturn(Optional.of(premierLeague));
+        when(repository.findByNameIgnoreCase("La Liga"))
+                .thenReturn(Optional.of(laLiga));
+
         ScheduledFixtureSync scheduler = new ScheduledFixtureSync(
-                service, properties, LocalTime.MIN, LocalTime.MAX
+                service, properties, repository, LocalTime.MIN, LocalTime.MAX
         );
 
         scheduler.synchronizeToday();
 
         LocalDate today = LocalDate.now(ZoneOffset.UTC);
-        verify(service).synchronize(39L, today.getYear(), today);
-        verify(service).synchronize(140L, today.getYear(), today);
+        verify(service).synchronize(1L, today);
+        verify(service).synchronize(2L, today);
     }
 }

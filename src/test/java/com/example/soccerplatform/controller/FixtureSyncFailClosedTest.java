@@ -1,6 +1,6 @@
 package com.example.soccerplatform.controller;
 
-import com.example.soccerplatform.integration.apifootball.ApiFootballClient;
+import com.example.soccerplatform.integration.SoccerDataProvider;
 import com.example.soccerplatform.service.FixtureSyncService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,14 +25,13 @@ class FixtureSyncFailClosedTest {
     private FixtureSyncService fixtureSyncService;
 
     @MockitoBean
-    private ApiFootballClient apiFootballClient;
+    private SoccerDataProvider soccerDataProvider;
 
     @Test
     void blankConfiguredKeyFailsClosedEvenWhenHeaderIsPresent() throws Exception {
         mockMvc.perform(post("/internal/sync/fixtures")
                         .header("X-Internal-Api-Key", "any-key")
-                        .queryParam("externalLeagueId", "39")
-                        .queryParam("season", "2026")
+                        .queryParam("leagueId", "1")
                         .queryParam("date", "2026-09-06"))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.status").value(401))

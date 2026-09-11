@@ -19,10 +19,9 @@ public class FixtureSyncController {
 
     @PostMapping("/internal/sync/fixtures")
     public FixtureSyncSummary synchronizeFixtures(
-            @RequestParam Long externalLeagueId,
-            @RequestParam int season,
+            @RequestParam Long leagueId,
             @RequestParam LocalDate date
     ) {
-        return fixtureSyncService.synchronize(externalLeagueId, season, date);
+        return fixtureSyncService.synchronize(leagueId, date);
     }
 }

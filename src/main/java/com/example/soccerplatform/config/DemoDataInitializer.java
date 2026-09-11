@@ -2,7 +2,7 @@ package com.example.soccerplatform.config;
 
 import com.example.soccerplatform.entity.League;
 import com.example.soccerplatform.entity.User;
-import com.example.soccerplatform.integration.apifootball.ApiFootballProperties;
+import com.example.soccerplatform.integration.footballdata.FootballDataProperties;
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.UserRepository;
 import org.springframework.boot.ApplicationArguments;
@@ -16,12 +16,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class DemoDataInitializer implements ApplicationRunner {
     private final UserRepository users;
     private final LeagueRepository leagues;
-    private final ApiFootballProperties properties;
+    private final FootballDataProperties properties;
 
     public DemoDataInitializer(
             UserRepository users,
             LeagueRepository leagues,
-            ApiFootballProperties properties) {
+            FootballDataProperties properties) {
         this.users = users;
         this.leagues = leagues;
         this.properties = properties;
@@ -37,11 +37,9 @@ public class DemoDataInitializer implements ApplicationRunner {
             users.save(new User("Demo User"));
         }
 
-        for (var configuredLeague : properties.leagues()) {
-            leagues.findByExternalId(configuredLeague.externalId()).orElseGet(() -> {
-                League league = new League(configuredLeague.name());
-                league.setExternalId(configuredLeague.externalId());
-                return leagues.save(league);
+        for (var competition : properties.competitions()) {
+            leagues.findByNameIgnoreCase(competition.name()).orElseGet(() -> {
+                return leagues.save(new League(competition.name()));
             });
         }
     }

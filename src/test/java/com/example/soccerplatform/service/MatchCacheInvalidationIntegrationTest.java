@@ -7,8 +7,8 @@ import com.example.soccerplatform.entity.Match;
 import com.example.soccerplatform.entity.MatchStatus;
 import com.example.soccerplatform.entity.Team;
 import com.example.soccerplatform.entity.User;
-import com.example.soccerplatform.integration.apifootball.ApiFootballClient;
-import com.example.soccerplatform.integration.apifootball.ApiFootballFixture;
+import com.example.soccerplatform.integration.ProviderFixture;
+import com.example.soccerplatform.integration.SoccerDataProvider;
 import com.example.soccerplatform.repository.LeaguePreferenceRepository;
 import com.example.soccerplatform.repository.LeagueRepository;
 import com.example.soccerplatform.repository.MatchRepository;
@@ -31,8 +31,6 @@ import static org.mockito.Mockito.when;
 @SpringBootTest
 class MatchCacheInvalidationIntegrationTest {
 
-    private static final long EXTERNAL_LEAGUE_ID = 39L;
-    private static final int SEASON = 2026;
     private static final LocalDate DATE = LocalDate.of(2026, 9, 6);
 
     @Autowired
@@ -63,7 +61,7 @@ class MatchCacheInvalidationIntegrationTest {
     private CacheManager cacheManager;
 
     @MockitoBean
-    private ApiFootballClient apiFootballClient;
+    private SoccerDataProvider soccerDataProvider;
 
     @BeforeEach
     void cleanState() {
@@ -78,19 +76,19 @@ class MatchCacheInvalidationIntegrationTest {
 
     @Test
     void fixtureSyncEvictsCachedMatchesAfterCommit() {
-        when(apiFootballClient.getFixtures(EXTERNAL_LEAGUE_ID, SEASON, DATE))
-                .thenReturn(List.of(providerFixture("NS", null, null)))
-                .thenReturn(List.of(providerFixture("1H", 1, 0)));
+        League league = leagueRepository.save(new League("Premier League"));
+        when(soccerDataProvider.getFixtures("Premier League", DATE, DATE))
+                .thenReturn(List.of(providerFixture(MatchStatus.SCHEDULED, null, null)))
+                .thenReturn(List.of(providerFixture(MatchStatus.LIVE, 1, 0)));
 
-        fixtureSyncService.synchronize(EXTERNAL_LEAGUE_ID, SEASON, DATE);
-        League league = leagueRepository.findByExternalId(EXTERNAL_LEAGUE_ID).orElseThrow();
+        fixtureSyncService.synchronize(league.getId(), DATE);
 
         List<MatchResponse> cachedScheduled = matchService.getLeagueMatches(
                 league.getId(), null
         );
         assertThat(cachedScheduled.getFirst().status()).isEqualTo(MatchStatus.SCHEDULED);
 
-        fixtureSyncService.synchronize(EXTERNAL_LEAGUE_ID, SEASON, DATE);
+        fixtureSyncService.synchronize(league.getId(), DATE);
 
         List<MatchResponse> refreshed = matchService.getLeagueMatches(league.getId(), null);
         assertThat(refreshed.getFirst().status()).isEqualTo(MatchStatus.LIVE);
@@ -123,23 +121,19 @@ class MatchCacheInvalidationIntegrationTest {
         assertThat(matchService.getUserMatches(user.getId(), null)).isEmpty();
     }
 
-    private ApiFootballFixture providerFixture(
-            String status,
+    private ProviderFixture providerFixture(
+            MatchStatus status,
             Integer homeScore,
             Integer awayScore
     ) {
-        return new ApiFootballFixture(
-                new ApiFootballFixture.Fixture(
-                        12345L,
-                        OffsetDateTime.parse("2026-09-06T15:00:00Z"),
-                        new ApiFootballFixture.Status(status)
-                ),
-                new ApiFootballFixture.League(EXTERNAL_LEAGUE_ID, "Premier League"),
-                new ApiFootballFixture.Teams(
-                        new ApiFootballFixture.Team(42L, "Arsenal"),
-                        new ApiFootballFixture.Team(49L, "Chelsea")
-                ),
-                new ApiFootballFixture.Goals(homeScore, awayScore)
+        return new ProviderFixture(
+                12345L,
+                OffsetDateTime.parse("2026-09-06T15:00:00Z"),
+                status,
+                new ProviderFixture.ProviderTeam(42L, "Arsenal"),
+                new ProviderFixture.ProviderTeam(49L, "Chelsea"),
+                homeScore,
+                awayScore
         );
     }
 
