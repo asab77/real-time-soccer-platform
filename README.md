@@ -1,20 +1,20 @@
-# Real-Time Soccer Platform
+# PitchLive — Real-Time Soccer Platform
 
 [![CI](https://github.com/asab77/real-time-soccer-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/asab77/real-time-soccer-platform/actions/workflows/ci.yml)
 
-A full-stack soccer match platform that combines scheduled provider synchronization, personalized match feeds, Redis caching, and live browser updates. The project uses a conventional Spring Boot service architecture with PostgreSQL as its source of truth and a React client for league preferences and match tracking.
+A deployed full-stack soccer platform built with Java and Spring Boot, React and TypeScript, PostgreSQL, and Redis. PitchLive combines REST APIs, automated and idempotent third-party fixture synchronization, STOMP/WebSocket client updates, and transaction-safe post-commit events in a Dockerized application managed with Flyway migrations and CI-tested cloud deployments.
 
-## Demo / Screenshots
+## Live Demo
 
-The application runs locally at `http://localhost:3000` after following the Docker Compose quick start below.
+**Live Demo:** [Open PitchLive](https://real-time-soccer-web.onrender.com)
 
-> Screenshot placeholder — dashboard and league-preference view.
+Select the leagues you follow, browse synchronized fixtures, and filter the match feed by status. Score updates may reflect the delay of the free data-provider plan.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    Provider[API-Football] --> Scheduler[Scheduled synchronization]
+    Provider[football-data.org] --> Scheduler[Scheduled synchronization]
     Scheduler --> Backend[Spring Boot]
     Backend -->|JPA writes and reads| Database[(PostgreSQL)]
     Backend <-->|Cache-aside match feeds| Cache[(Redis)]
@@ -31,7 +31,7 @@ PostgreSQL remains authoritative. REST returns the current application state; We
 - **Backend:** Java 21, Spring Boot, Spring Data JPA, Spring Cache, Spring WebSocket/STOMP
 - **Data:** PostgreSQL, Redis, Flyway
 - **Infrastructure:** Docker, Docker Compose, nginx
-- **External data:** API-Football
+- **External data:** football-data.org
 - **Testing:** Spring Boot test suite, Vitest and Testing Library
 
 ## Engineering Highlights
@@ -50,7 +50,7 @@ PostgreSQL remains authoritative. REST returns the current application state; We
 ## Real-Time Data Flow
 
 ```text
-API-Football
+football-data.org
 → ScheduledFixtureSync
 → FixtureSyncService
 → PostgreSQL transaction
