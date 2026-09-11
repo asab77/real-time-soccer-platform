@@ -79,13 +79,18 @@ export default function App() {
             PITCH<span>LIVE</span>
           </p>
           <h1>Every match that matters.</h1>
-          <p>Follow your leagues. Track every kickoff. See scores move live.</p>
+          <p>Follow your leagues. Track every kickoff. See scores as they update.</p>
         </div>
-        <div className={`connection ${connected ? "online" : ""}`}>
-          {connected ? "Live updates on" : "REST mode"}
+        <div
+          className={`connection ${connected ? "online" : "offline"}`}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="connection-dot" aria-hidden="true" />
+          {connected ? "Live updates on" : "Updates via refresh"}
         </div>
       </header>
-      {error && <div className="error">{error}</div>}
+      {error && <div className="error" role="alert">{error}</div>}
       <LeaguePreferences
         leagues={leagues}
         selected={selected}
@@ -99,6 +104,7 @@ export default function App() {
       ) : (
         <MatchDashboard
           matches={matches}
+          followedLeagues={prefs}
           filter={filter}
           onFilter={setFilter}
           loading={loading}

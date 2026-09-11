@@ -57,15 +57,28 @@ test("renders leagues, selected preference and live match", async () => {
   ).toHaveAttribute("aria-pressed", "true");
   expect(await screen.findByText("Arsenal")).toBeVisible();
   expect(screen.getAllByText("LIVE").length).toBeGreaterThan(0);
-  expect(screen.getByText("1 – 0")).toBeVisible();
+  expect(screen.getByText("1")).toBeVisible();
+  expect(screen.getByText("0")).toBeVisible();
+  expect(screen.getByText("1 match · Premier League")).toBeVisible();
 });
-test("null scores display vs rather than zero zero", async () => {
+test("scheduled matches emphasize kickoff without showing a score", async () => {
   vi.mocked(api.getMatches).mockResolvedValue([
     { ...live, homeScore: null, awayScore: null, status: "SCHEDULED" },
   ]);
   render(<App />);
-  expect(await screen.findByText("vs")).toBeVisible();
+  expect(await screen.findByText("Kickoff")).toBeVisible();
+  expect(screen.getByText("UPCOMING")).toBeVisible();
   expect(screen.queryByText("0 – 0")).not.toBeInTheDocument();
+});
+test("finished matches emphasize the final score", async () => {
+  vi.mocked(api.getMatches).mockResolvedValue([
+    { ...live, homeScore: 2, awayScore: 1, status: "FINISHED" },
+  ]);
+  render(<App />);
+  expect(await screen.findByText("FT")).toBeVisible();
+  expect(screen.getByText("2")).toBeVisible();
+  expect(screen.getByText("1")).toBeVisible();
+  expect(screen.getByText("Full time")).toBeVisible();
 });
 test("selecting and removing leagues call preference APIs", async () => {
   const user = userEvent.setup();
@@ -98,5 +111,12 @@ test("websocket created event also refreshes the feed", async () => {
 test("REST content remains visible when websocket reports disconnected", async () => {
   render(<App />);
   expect(await screen.findByText("Arsenal")).toBeVisible();
-  expect(screen.getByText("REST mode")).toBeVisible();
+  expect(screen.getByText("Updates via refresh")).toBeVisible();
+});
+
+test("empty filtered feed gives a useful next step", async () => {
+  vi.mocked(api.getMatches).mockResolvedValue([]);
+  render(<App />);
+  expect(await screen.findByText("No matches in this view")).toBeVisible();
+  expect(screen.getByText(/Try another filter/)).toBeVisible();
 });
